@@ -92,10 +92,13 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
     to the user defined by target_user_id unless instructed otherwise with: "should_mute=False".
 
     target_user_mention is a mention of the command's target
-    search_depth is an integer type that tells the bot how many messages back to search every channel it can see in the server.
-    delete_found_messages is a boolean (True/False) that tells the bot whether or not to delete any messages sent by the target that it finds.
+    search_depth is an integer type that tells the bot how many messages back to search every channel it can see in the
+    server.
+    delete_found_messages is a boolean (True/False) that tells the bot whether or not to delete any messages sent by
+    the target that it finds.
     should_mute is a boolean that tells the bot whether or not it should mute the target user.
-    reason is a string type that is used on audit logs where possible and is given to the target by the bot where it explains what they did wrong.'''
+    reason is a string type that is used on audit logs where possible and is given to the target by the bot where it
+    explains what they did wrong.'''
 
     warn_command_start = timer()
 
@@ -114,7 +117,8 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
         delete_found_messages = bool(delete_found_messages)
         should_mute = bool(should_mute)
     except TypeError:
-        await ctx.send("Command failed: could not convert argument to correct type.")
+        await ctx.send("Command failed: could not convert argument to correct type.",
+                       delete_after=delete_messages_after)
 
     if not reason.endswith("."):  # Make everything look nice
         reason += "."
@@ -131,6 +135,8 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
     target_message_content_list = []
     found_messages_count = 0
 
+    target_message_content_list.append("User warned for reason: "+reason)
+
     async with ctx.message.channel.typing():  # Show the command invoker that the bot is doing something
         message_scrape_timer = timer()
         for channel in ctx.message.guild.text_channels:
@@ -142,26 +148,30 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
                             message_attach_dir_list = []
                             for attachment in message.attachments:
                                 attachment_filename = str(message.author.id)+"_"+attachment.filename
-                                with open("./carcinogenic_pictures/"+str(message.id)+"_"+attachment_filename, "w+b") as \
-                                        attachment_file:
+                                with open("./carcinogenic_pictures/"+str(message.id)+"_"+attachment_filename, "w+b") \
+                                        as attachment_file:
                                     try:
                                         await attachment.save(attachment_file)
-                                        message_attach_dir_list.append("./carcinogenic_pictures/" + str(message.id)+"_" +
-                                                                       attachment_filename)
+                                        message_attach_dir_list.append("./carcinogenic_pictures/" + str(message.id)+"_"
+                                                                       + attachment_filename)
                                     except discord.NotFound:
                                         logger.info(f"Could not find file: {attachment_filename}, message was deleted.")
-                                    logger.debug(f"Saved file with name {attachment_filename} in ./carcinogenic_pictures/")
+                                    logger.debug(
+                                        f"Saved file with name {attachment_filename} in ./carcinogenic_pictures/")
 
                             target_message_content_list.append({"id": message.id,
-                                                                "timestamp": message.created_at.strftime("%Y-%m-%d_%H-%M-%S"),
-                                                                "contents": message.content, "channel": message.channel.id,
+                                                                "timestamp": message.created_at.strftime(
+                                                                    "%Y-%m-%d_%H-%M-%S"),
+                                                                "contents": message.content,
+                                                                "channel": message.channel.id,
                                                                 "has_attachment": True,
                                                                 "attachment_dir": message_attach_dir_list})
                         else:
                             target_message_content_list.append({"id": message.id,
                                                                 "timestamp": message.created_at.strftime(
                                                                     "%Y-%m-%d_%H-%M-%S"),
-                                                                "contents": message.content, "channel": message.channel.id,
+                                                                "contents": message.content,
+                                                                "channel": message.channel.id,
                                                                 "has_attachment": False,
                                                                 "attachment_dir": []})
                         if delete_found_messages:
