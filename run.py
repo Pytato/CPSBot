@@ -25,7 +25,7 @@ config = configparser.ConfigParser()
 config.read(os.path.abspath("./configs/config.ini"))
 admin_role_names = config["Credentials"]["admin_role_names"]
 bot_token = config["Credentials"]["bot_token"]
-cmd_prefix = "!"
+cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 mute_role_name = config["Misc"]["mute_role_name"]
 student_role_name = config["Misc"]["student_role_name"]
 delete_messages_after = config["Misc"]["delete_messages_after"]
@@ -84,10 +84,13 @@ async def on_message(msg):
 async def warn(ctx, target_user_mention, search_depth: int, delete_found_messages: bool, should_mute: bool, *,
                reason: str):
     '''This command is used to warn users for breaching the rules, the bot will automatically apply the mute-role
-    to the user defined by target_user_id unless instructed otherwise with: "should_mute=False" defined. Everything
-    after the first three arguments: "target_user_id, search_depth and delete_found_messages" will be taken to be part
-    of the "reason" argument, "reason" must ALWAYS be the final argument defined in this command and is programmatically
-    optional, but it is always advised you enter a reason for warning a user.'''
+    to the user defined by target_user_id unless instructed otherwise with: "should_mute=False".
+
+    target_user_mention is a mention of the command's target
+    search_depth is an integer type that tells the bot how many messages back to search every channel it can see in the server.
+    delete_found_messages is a boolean (True/False) that tells the bot whether or not to delete any messages sent by the target that it finds.
+    should_mute is a boolean that tells the bot whether or not it should mute the target user.
+    reason is a string type that is used on audit logs where possible and is given to the target by the bot where it explains what they did wrong.'''
 
     warn_command_start = timer()
 
