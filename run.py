@@ -1,18 +1,14 @@
-from timeit import default_timer as timer
-from discord.ext import commands
-import discord
-from datetime import datetime
 import configparser
-import asyncio
-import sqlite3
-import logging
-import random
-import time
 import json
-import csv
-import sys
+import logging
 import os
+import sys
+import time
+from datetime import datetime
+from timeit import default_timer as timer
 
+import discord
+from discord.ext import commands
 
 startup_begin = timer()
 
@@ -188,7 +184,6 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
     await target_user.send(content=warning_message)
 
     logger.debug(f"Finished running warn command in {timer() - warn_command_start}s.")
-
 
 
 # Begin logging
