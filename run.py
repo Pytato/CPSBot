@@ -347,7 +347,7 @@ time.sleep(0.1)
 if not os.path.exists("./logs/"):
     os.mkdir("./logs/")
 logger = logging.getLogger("CPSBot")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger_start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 formatter = logging.Formatter("[{asctime}] [{levelname:}] [{threadName:}] {name}: {message}",
                               "%Y-%m-%d %H:%M:%S", style="{")
