@@ -5,11 +5,15 @@ import logging
 import os
 import sys
 import time
+import yaml
 from datetime import datetime
 from timeit import default_timer as timer
 
 import discord
 from discord.ext import commands
+
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
 startup_begin = timer()
 
@@ -22,11 +26,13 @@ config = configparser.ConfigParser()
 config.read(os.path.abspath("./configs/config.ini"))
 admin_role_names = config["Credentials"]["admin_role_names"]
 bot_token = config["Credentials"]["bot_token"]
-cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
+use_drive_for_backup = config["Credentials"]["use_drive_for_backup"]
+owner_id = config["Credentials"]["owner_id"]
 mute_role_name = config["Misc"]["mute_role_name"]
 student_role_name = config["Misc"]["student_role_name"]
 delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
+cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 listen_channels_list = listen_channels.split(",")
@@ -35,27 +41,116 @@ if admin_role_list[0] == "":
     print("You must specify administrative roles for this bot.")
     sys.exit("No admin roles defined.")
 
+if listen_channels_list[0] == "":
+    listen_channels_list.pop(0)
+
+try:
+    use_drive_for_backup = bool(use_drive_for_backup)
+except TypeError:
+    print("You must enter a boolean type for use_drive_for_backup, remember to capitalise True/False.")
+
 bot = commands.Bot(command_prefix=cmd_prefix, pm_help=True)
+
+
+async def auth_with_the_gargle():
+    global owner_id
+
+    try:
+        owner_id = int(owner_id)
+        owner_object = await bot.get_user_info(owner_id)
+    except TypeError:
+        logger.error("owner_id in config.ini contains non-int type characters.")
+        owner_object = None
+    except discord.NotFound:
+        logger.error("Owner not found from owner_id.")
+        owner_object = None
+
+    if owner_object is None:
+        logger.error("No owner ID defined")
+
+    await asyncio.sleep(0.4)
+
+    try:
+        gauth.LoadCredentialsFile("./configs/credentials.json")
+        loaded_creds = True
+    except KeyError:
+        loaded_creds = False
+
+    if (not loaded_creds) or gauth.credentials is None:
+        logger.info("Generating new Google API credentials.")
+        if owner_object is not None:
+            try:
+                logger.debug("OAuth process starting. Messaging bot owner")
+                await owner_object.send(
+                    "The bot failed automatic authentication with Google's API, please log into console in order to"
+                    " re-authenticate manually.")
+            except discord.Forbidden:
+                logger.error("Could not send message to bot owner, due to them not having DMs enabled.")
+        await asyncio.sleep(0.2)
+        gauth.CommandLineAuth()
+
+    elif gauth.access_token_expired:
+        logger.info("Old access token has expired, refreshing now.")
+        gauth.Refresh()
+        gauth.Authorize()
+
+    else:
+        logger.debug("Authorising app on Google's API")
+        gauth.Authorize()
+
+    gauth.SaveCredentialsFile("./configs/credentials.json")
+
+
+async def search_for_file_drive(file_data, query, make_if_missing=False):
+    found_file = False
+    await auth_with_the_gargle()
+    drive = GoogleDrive(gauth)
+
+    file_list = drive.ListFile(query).GetList()
+
+    requested_file = {"id": None}
+
+    for file in file_list:
+        matched_attrib = 0
+        for key, value in file_data.items():
+            if file[key] == value:
+                matched_attrib += 1  # Ensures every parameter is satisfied before the statement is happy.
+                if matched_attrib == len(file_data):
+                    requested_file = file
+                    found_file = True
+                    break
+        if found_file:
+            break
+
+    if (not found_file) and make_if_missing:
+        requested_file = drive.CreateFile(file_data)
+        requested_file.Upload()
+
+    if requested_file["id"] is None:
+        return "Does not exist"
+
+    return requested_file
 
 
 @bot.event
 async def on_ready():
     logger.debug("Start of on_ready()")
-    global warn_count_lockout
 
-    warn_count_lockout = []
+    if use_drive_for_backup:
+        await auth_with_the_gargle()
+
     logger.info(f"CPSBot is ready, took {timer() - bot_beginning_time:.3f}s.")
 
 
 @bot.event
 async def on_message(msg):
 
-    logger.debug(str(msg.content.startswith(msg.content.split()[0])))
-    logger.debug(str(msg.content.startswith(cmd_prefix)))
-    logger.debug(cmd_prefix)
-
     if msg.guild is None:
         return
+
+    if listen_channels_list:
+        if msg.channel.id not in listen_channels_list:
+            return
 
     if not msg.content.startswith(cmd_prefix):
         return
@@ -79,8 +174,9 @@ async def on_message(msg):
 
 @bot.command()
 async def shutdown(ctx):
+    """Shuts the bot down as gracefully as possible."""
     await ctx.send(":wave:", delete_after=1)
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(3)
     await bot.logout()
     sys.exit(0)
 
@@ -88,19 +184,23 @@ async def shutdown(ctx):
 @bot.command(name="warn")
 async def warn(ctx, target_user_mention, search_depth: int, delete_found_messages: bool, should_mute: bool, *,
                reason: str):
-    '''This command is used to warn users for breaching the rules, the bot will automatically apply the mute-role
+    """This command is used to warn users for breaching the rules, the bot will automatically apply the mute-role
     to the user defined by target_user_id unless instructed otherwise with: "should_mute=False".
 
-    target_user_mention is a mention of the command's target
-    search_depth is an integer type that tells the bot how many messages back to search every channel it can see in the
-    server.
-    delete_found_messages is a boolean (True/False) that tells the bot whether or not to delete any messages sent by
-    the target that it finds.
-    should_mute is a boolean that tells the bot whether or not it should mute the target user.
-    reason is a string type that is used on audit logs where possible and is given to the target by the bot where it
-    explains what they did wrong.'''
+    Positional Arguments:
+        - target_user_mention is a mention of the command's target
+        - search_depth is an integer type that tells the bot how many messages back to search every channel it can see
+        in the server.
+        - delete_found_messages is a boolean (True/False) that tells the bot whether or not to delete any messages sent
+        by the target that it finds.
+        - should_mute is a boolean that tells the bot whether or not it should mute the target user.
+        - reason is a string type that is used on audit logs where possible and is given to the target by the bot where
+        it explains what they did wrong. It is a "catch-all" so should always be the last positional argument.
+    """
 
     warn_command_start = timer()
+
+    current_time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     # Need to get user object for user of given ID.
     target_user = await commands.MemberConverter().convert(ctx, target_user_mention)
@@ -133,6 +233,7 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
         logger.info(f"Added mute_role to {target_user.display_name}. Requested by {ctx.message.author.name}.")
 
     target_message_content_list = []
+    attachment_file_list = []
     found_messages_count = 0
 
     target_message_content_list.append("User warned for reason: "+reason)
@@ -154,6 +255,8 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
                                         await attachment.save(attachment_file)
                                         message_attach_dir_list.append("./carcinogenic_pictures/" + str(message.id)+"_"
                                                                        + attachment_filename)
+                                        attachment_file_list.append(
+                                            "./carcinogenic_pictures/"+str(message.id)+"_"+attachment_filename)
                                     except discord.NotFound:
                                         logger.info(f"Could not find file: {attachment_filename}, message was deleted.")
                                     logger.debug(
@@ -180,9 +283,39 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
                 pass
         logger.debug(f"Finished compiling target message history in {timer() - message_scrape_timer} seconds.")
 
-        with open(f"./stored_user_messages/{str(target_user.id)}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json",
-                  "w") as json_f:
+        with open(f"./stored_user_messages/{str(target_user.id)}_{current_time}.json", "w") as json_f:
             json.dump(target_message_content_list, json_f, indent=4)
+
+        if use_drive_for_backup:
+
+            # Need to check if a CPSBot directory has already been made.
+            cps_bot_folder = await search_for_file_drive({"title": "CPSBot Cloud",
+                                                         "mimeType": "application/vnd.google-apps.folder"},
+                                                         {'q': "'root' in parents and trashed=false"},
+                                                         make_if_missing=True)
+
+            attachments_folder = await search_for_file_drive({"title": "Saved Attachments",
+                                                              "mimeType": "application/vnd.google-apps.folder"},
+                                                             {'q': f"'{cps_bot_folder['id']}' in parents "
+                                                                   f"and trashed=false"},
+                                                             make_if_missing=True)
+
+            await auth_with_the_gargle()
+
+            g_drive = GoogleDrive(gauth)
+            for attachment_path in attachment_file_list:
+                attachment_name = attachment_path.split("/")[2]
+                attachment_drive_object = g_drive.CreateFile(metadata={'title': attachment_name,
+                                                                       'parents': [{'id': attachments_folder['id']}]})
+                attachment_drive_object.SetContentFile(attachment_path)
+                attachment_drive_object.Upload()
+                logger.debug(f"Uploaded attachment {attachment_name} to Google Drive.")
+
+            message_log_file = g_drive.CreateFile(metadata={'title': f"{str(target_user.id)}_{current_time}.json",
+                                                            'parents': [{'id': cps_bot_folder['id']}]})
+            message_log_file.SetContentFile(f"./stored_user_messages/{str(target_user.id)}_{current_time}.json")
+            message_log_file.Upload()
+            logger.debug(f"Uploaded {str(target_user.id)}_{current_time}.json")
 
     await ctx.send(f"User: {target_user.display_name} has been warned, found {str(found_messages_count)} messages, "
                    f"handled according to command instructions.", delete_after=delete_messages_after)
@@ -198,7 +331,7 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
 
     if should_mute:
         warning_message += f'You have also lost the permission to type in the {ctx.guild.name} Discord server, ' \
-                           f'administrators will be in contact soon regarding when you will regain this permission.'
+                           f'administrators will be in contact soon regarding if/when you will regain this permission.'
 
     warning_message += f'\n\n**DEPENDING ON THE SEVERITY OF THIS INFRACTION, YOU MAY LOSE ACCESS TO THE DISCORD ' \
                        f'SERVER AND THE OPPORTUNITY TO PARTICIPATE IN SOCIETY ACTIVITIES.**'
@@ -214,7 +347,7 @@ time.sleep(0.1)
 if not os.path.exists("./logs/"):
     os.mkdir("./logs/")
 logger = logging.getLogger("CPSBot")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger_start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 formatter = logging.Formatter("[{asctime}] [{levelname:}] [{threadName:}] {name}: {message}",
                               "%Y-%m-%d %H:%M:%S", style="{")
@@ -241,6 +374,32 @@ else:
     except ValueError:
         logger.error("delete_messages_after variable in config.ini can not be converted to int type.")
         sys.exit("Improper type in config option: delete_messages_after.")
+
+if use_drive_for_backup:
+    if not os.path.exists("./configs/credentials.json"):
+        with open("./configs/credentials.json", "w") as temp_json:
+            pass
+    if not os.path.exists("./configs/settings.yaml"):
+        yaml_default_struct = {
+            "save_credentials": True,
+            "get_refresh_token": True,
+            "client_config_backend": "file",
+            "save_credentials_backend": "file",
+            "client_config_file": "./configs/client_secrets.json",
+            "save_credentials_file": "./configs/credentials.json",
+            "client_config": {
+                "client_id": "goes here",
+                "client_secret": "goes here"
+            },
+            "oauth_scope": [
+                "https://www.googleapis.com/auth/drive",
+                "https://www.googleapis.com/auth/drive.metadata"
+            ]
+        }
+        with open("./configs/settings.yaml", "w") as settings_yaml:
+            yaml.dump(yaml_default_struct, settings_yaml, default_flow_style=False)
+            logger.debug("Made new settings.yaml file.")
+    gauth = GoogleAuth(settings_file='./configs/settings.yaml')
 
 bot_beginning_time = timer()
 bot.run(bot_token)
