@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import yaml
+import random
 from datetime import datetime
 from timeit import default_timer as timer
 
@@ -21,10 +22,22 @@ if not os.path.exists("./configs/config.ini"):
     print("No config file can be found in ./configs/.")
     sys.exit("No config found.")
 
+protected_example_addresses = [
+    "youremail",
+    "your_email",
+    "youremailhere",
+    "your_email_here",
+    "enable",
+    "ssc",
+    "studentlife",
+    "accommodation",
+    "parking"
+]
 
 config = configparser.ConfigParser()
 config.read(os.path.abspath("./configs/config.ini"))
 admin_role_names = config["Credentials"]["admin_role_names"]
+vote_right_role = config["Credentials"]["vote_rights_role"]
 bot_token = config["Credentials"]["bot_token"]
 use_drive_for_backup = config["Credentials"]["use_drive_for_backup"]
 owner_id = config["Credentials"]["owner_id"]
@@ -32,6 +45,7 @@ mute_role_name = config["Misc"]["mute_role_name"]
 student_role_name = config["Misc"]["student_role_name"]
 delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
+announce_channel_config = config["Misc"]["announcement_channel_id"]
 cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
@@ -48,6 +62,9 @@ try:
     use_drive_for_backup = bool(use_drive_for_backup)
 except TypeError:
     print("You must enter a boolean type for use_drive_for_backup, remember to capitalise True/False.")
+
+vote_file_queue = []
+vote_types = ["freddie_style_vote", "fpbtp_style_vote"]
 
 bot = commands.Bot(command_prefix=cmd_prefix, pm_help=True)
 
@@ -145,11 +162,35 @@ async def on_ready():
 @bot.event
 async def on_message(msg):
 
-    if msg.guild is None:
+    if msg.author.bot:
         return
 
+    author_obj = msg.author
+    author_is_admin = False
+    for admin_role in author_obj.roles:
+        if admin_role.name in admin_role_list:
+            author_is_admin = True
+            break
+
+    message_protected = False
+    for protected_address in protected_example_addresses:
+        if protected_address in msg.content:
+            message_protected = True
+            break
+
+    if not message_protected:
+        if "@soton.ac.uk" in msg.content and not author_is_admin:
+            await msg.channel.send(f"{msg.author.mention}, Please do not send messages in public channels that contain "
+                                   f"your email. If you are attempting to verify with SVGEBot, use direct messages and "
+                                   f"send:\n\n`!email your_email@soton.ac.uk` then follow instructions sent to your "
+                                   f"university inbox. \n\nIf you believe your message was deleted in error, contact "
+                                   f"`@Freddie (Pytato)` with the datetime of your message.",
+                                   delete_after=delete_messages_after)
+            await msg.delete()
+            logger.info(f"Auto-deleted message sent by {msg.author.display_name}, in {msg.channel.name}.")
+
     if listen_channels_list:
-        if msg.channel.id not in listen_channels_list:
+        if msg.channel.id not in listen_channels_list and msg.guild is not None:
             return
 
     if not msg.content.startswith(cmd_prefix):
@@ -158,18 +199,15 @@ async def on_message(msg):
     logger.debug("Message received from {0.name}#{0.discriminator} in {1.guild}, #{1.channel.name}."
                  .format(msg.author, msg))
 
-    author_obj = msg.author
-    author_is_admin = False
-    for admin_role in author_obj.roles:
-        if admin_role.name in admin_role_list:
-            author_is_admin = True
-
-    if not author_is_admin:
-        return
+    if msg.split(" ")[0] != f"{cmd_prefix}vote_for":
+        if not author_is_admin:
+            return
 
     logger.info(f'Command sent by "{msg.author.name}#{msg.author.discriminator}": "{msg.content}."')
 
     await bot.process_commands(msg)
+
+    await msg.delete()
 
 
 @bot.command()
@@ -324,7 +362,7 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
 
     if delete_found_messages:
         warning_message += f'This bot found {str(found_messages_count)} messages sent by you, they have now been ' \
-                           f'logged and deleted from the Discord server. '
+                           f'logged for administrative purposes and deleted from the Discord server. '
     else:
         warning_message += f'This bot found {str(found_messages_count)} messages sent by you, they have now been ' \
                            f'logged for administrative purposes. '
@@ -334,11 +372,192 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
                            f'administrators will be in contact soon regarding if/when you will regain this permission.'
 
     warning_message += f'\n\n**DEPENDING ON THE SEVERITY OF THIS INFRACTION, YOU MAY LOSE ACCESS TO THE DISCORD ' \
-                       f'SERVER AND THE OPPORTUNITY TO PARTICIPATE IN SOCIETY ACTIVITIES.**'
+                       f'SERVER AND THE OPPORTUNITY TO PARTICIPATE IN SOCIETY ACTIVITIES. SVGE ALSO RESERVES ' \
+                       f'THE RIGHT TO REPORT YOUR ACTIONS TO SUSU, THE UNIVERSITY OF SOUTHAMPTON AND DISCORD.**'
 
     await target_user.send(content=warning_message)
 
     logger.debug(f"Finished running warn command in {timer() - warn_command_start}s.")
+
+
+@bot.command
+async def get_emote_id(ctx, emote):
+    """Returns the ID for a given emote, by name or the emote sent in a message.
+
+    Args:
+        - emote: either emote name or object sent in message, if *, command returns a list of all emotes in DMs,
+        if *ani, returns a list of all animated emotes."""
+
+    if emote != "*" and emote != "*ani":
+        try:
+            emoji_object = await commands.EmojiConverter().convert(ctx, emote)
+        except commands.CommandError:
+            logger.error("Failed to convert target emoji to object.")
+            return
+        await ctx.send(f"Found emoji `:{emoji_object.name}:` with ID: `{emoji_object.id}`.",
+                       delete_after=delete_messages_after)
+        return
+
+    emote_list_str = '```{'
+    for emoji in ctx.guild.emojis:
+        if emoji.guild_id == ctx.guild.id:
+            if emoji.animated and emote == "*ani":
+                emote_list_str += f"{emoji.name} : {emoji.id},"
+            elif (not emoji.animated) and emote == "*":
+                emote_list_str += f"{emoji.name} : {emoji.id},"
+
+    emote_list_str = emote_list_str.pop[-1] + "}```"
+    await ctx.author.send(f"List of {emote} emotes: \n\n{emote_list_str}", delete_after=delete_messages_after)
+
+
+@bot.command
+async def get_role_id(ctx, *, role: str):
+    """Returns the Role ID for a given role.
+
+    Args:
+        - role: role name existing in the server of server invocation."""
+
+    try:
+        role_obj = await commands.RoleConverter().convert(ctx, role)
+    except commands.CommandError:
+        logger.error("Failed to convert target role to object.")
+        await ctx.send("Failed to convert role to ID.", delete_after=delete_messages_after)
+        return
+
+    await ctx.author.send(f"{role_obj.name} | {str(role_obj.id)}")
+
+
+@bot.command
+async def create_react_roles(ctx, *, emote_role_dict: dict):
+    """Generates a react message for role allocation
+
+    Args:
+        - emote_role_dict: A comma separated dictionary of emote IDs and their associated role IDs"""
+
+    '''
+        for keys, values in emote_role_dict.items():
+            pass
+    '''
+
+    return
+
+
+@bot.command(pass_context=True)
+async def start_vote(ctx, vote_type_new, vote_name, *, candidate_list: str):
+    is_admin = False
+    for admin_role in admin_role_list:
+        if await commands.RoleConverter().convert(ctx, admin_role) in ctx.author.roles:
+            is_admin = True
+            break
+
+    if not is_admin:
+        logger.warning("User: {} attempted to run a vote but doesn't have correct permissions!"
+                       .format(ctx.author))
+        return
+
+    candidate_list = candidate_list.split(",")
+
+    logger.debug("Successfully finished parsing list of candidates.\n" + str(candidate_list))
+
+    announce_message = f"This is a member only vote for {vote_name}" \
+                       f"Below will be the valid candidates for you to vote for, below that the voting format and \n\n" \
+                       f"__Eligible Candidates__:\n"
+
+    for candidate in candidate_list:
+        announce_message = announce_message+f"- {candidate}\n"
+
+    logger.info("Successfully completed the candidates listed on the announcement message.")
+
+    if vote_type_new:
+        announce_message = announce_message + "\nTo vote, send this command to CPSBot in private message: " \
+                                              "`{0}vote_for <first_choice> <second_choice> <last_choice>`. " \
+                                              "Please understand that while the choice names are not case sensitive, " \
+                                              "they __**must be in order and must be spelt the same way, spaces " \
+                                              "split up your votes**__.\n\nHere's an example of its use: " \
+                                              "`{0}vote_for Freddie Kim_Jong-Un Mao`, here you are voting for " \
+                                              "Freddie as your first choice, Lil' Kimmy as your second and Mao as " \
+                                              "your last choice.".format(cmd_prefix)
+
+    else:
+        announce_message += (
+            f'\nTo vote, send the following command to CPSBot in a __**PRIVATE MESSAGE**__:\n'
+            f'`{cmd_prefix}vote_for {vote_name} <your_choice>`.\n\nWhile <your_choice> is not case '
+            f'sensitive, you should send it exactly the same as in this message to ensure your vote '
+            f'is counted and valid. Understand that you may only vote if you have the role: {vote_right_role}.\n\n'
+            f'The speeches for each candidate have been sent before this message by Freddie.\n\n'
+            f'Your first valid vote will be counted and can not be changed, votes will be made anonymous after an '
+            f'initial validation count to ensure democratic integrity, information regarding which way individuals '
+            f'have voted will be redacted from the democratic integrity report.'
+        )
+
+    vote_storage = {"counts": {}, "votes": {}}
+
+    for candidate in candidate_list:
+        vote_storage["counts"][candidate.lower()] = 0
+
+    logger.info("Set up dictionary for holding vote count information.")
+
+    # Now need to handle directories for vote storage under the vote_name
+    if not os.path.exists("./active_votes/"):
+        os.mkdir("./active_votes/")
+        logger.info("Generated directory for active votes.")
+    if not os.path.exists("./ended_votes/"):
+        os.mkdir("./ended_votes/")
+        logger.info("Generated directory for ended votes.")
+
+    if vote_type_new:
+        vote_type_str = "freddie_style_vote"
+    else:
+        vote_type_str = "fpbtp_style_vote"
+
+    with open(f"./active_votes/vote_{vote_name}_{vote_type_str}.json", mode="w") as json_file:
+        json.dump(vote_storage, json_file, indent=4)
+        logger.info(f"Written JSON file to ./active_votes/vote_{vote_name}_{vote_type_str}.json.")
+
+    target_announce_channel = await commands.TextChannelConverter().convert(ctx, announce_channel_config)
+
+    await target_announce_channel.send(announce_message)
+
+
+@bot.command(pass_context=True)
+async def vote_for(ctx, vote_name, *, votes):
+    """Used for special votes configured by bot owner."""
+
+    global vote_file_queue
+    global vote_types
+
+    thread_id = random.randint(1, 10000)
+
+    while thread_id in vote_file_queue:
+        thread_id = random.randint(1, 10000)
+
+    logging.info("Thread with ID: {} has been opened in a list of length: {}.".format(thread_id, len(vote_file_queue)))
+
+    if not vote_file_queue:
+        await vote_file_queue.append(thread_id)
+        await asyncio.sleep(0.5)
+    else:
+        await vote_file_queue.append(thread_id)
+
+    while vote_file_queue[0] != thread_id:
+        await asyncio.sleep(0.1)
+
+    if (len(vote_file_queue) - 1) > 0:
+        logger.info(f"File queue for votes is currently {len(vote_file_queue)} long.")
+
+    found_vote = False
+    for vote_type in vote_types:
+        if f"./active_votes/vote_{vote_name}_{vote_type}.json" in os.listdir("./active_votes/"):
+            found_vote = True
+            break
+
+    if not found_vote:
+        logger.debug("User attempted to vote in a vote that does not exist.")
+        await ctx.send("The <vote_name> you chose does not exist.")
+
+    #with open()
+
+    vote_file_queue.pop(0)
 
 
 # Begin logging
