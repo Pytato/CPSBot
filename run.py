@@ -7,7 +7,6 @@ import sys
 import time
 import yaml
 import shutil
-import random
 from datetime import datetime
 from timeit import default_timer as timer
 
@@ -95,6 +94,7 @@ else:
 bot = commands.Bot(command_prefix=cmd_prefix, pm_help=True)
 
 watching = discord.Activity(type=discord.ActivityType.watching, name="you")
+check_in_progress = False
 
 
 async def auth_with_the_gargle():
@@ -146,6 +146,46 @@ async def auth_with_the_gargle():
     gauth.SaveCredentialsFile("./configs/credentials.json")
 
 
+async def clean_colour_roles(context_guild):
+    await asyncio.sleep(0.5)
+    for role in context_guild.roles:
+        if "CPS[0x" in role.name:
+            if not role.members:
+                await role.delete(reason="Automatic custom colour deletion when unused.")
+    logger.info("Cleaned out empty colour roles")
+
+
+async def check_colour_users(guild_obj_list):
+    if len(guild_obj_list) > 1:
+        this_guild = guild_obj_list.pop(0)
+        await check_colour_users(guild_obj_list)
+    else:
+        this_guild = guild_obj_list[0]
+    parsed_req_list = ""
+    for req_role in colour_request_list:
+        parsed_req_list += f" - {req_role}\n"
+    for role in this_guild.roles:
+        if "CPS[0x" in role.name:
+            for member_obj in role.members:
+                valid_user = False
+                for mem_role in member_obj.roles:
+                    if mem_role.name in colour_request_list:
+                        valid_user = True
+                        break
+                if valid_user:
+                    break
+                else:
+                    await member_obj.send(f"Your custom colour role `{role.name}` on {this_guild.name} has been "
+                                          f"removed due to you lacking the permissions to retain it. To get a "
+                                          f"custom colour, you need one of the following roles:\n"+parsed_req_list)
+                    await member_obj.remove_roles(role,
+                                                  reason="Automatic colour role removal due to expiry by CPSBot.")
+
+    logger.info(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
+
+    await clean_colour_roles(this_guild)
+
+
 async def search_for_file_drive(file_data, query, make_if_missing=False):
     found_file = False
     await auth_with_the_gargle()
@@ -191,9 +231,14 @@ async def on_ready():
 
     logger.info(f"CPSBot is ready, took {timer() - bot_beginning_time:.3f}s.")
 
+    logger.info("Checking for invalid colour roles.")
+
+    await check_colour_users(bot.guilds)
+
 
 @bot.event
 async def on_message(msg):
+    global check_in_progress
 
     if msg.author.bot:
         return
@@ -206,6 +251,11 @@ async def on_message(msg):
         if protected_address in msg.content:
             message_protected = True
             break
+
+    if not check_in_progress:
+        check_in_progress = True
+        await check_colour_users(bot.guilds)
+        check_in_progress = False
 
     author_obj = msg.author
     author_is_admin = False
@@ -239,11 +289,11 @@ async def on_message(msg):
         msg_preserved = msg
         await msg.delete()
         await bot.process_commands(msg_preserved)
-    except discord.ext.commands.CommandNotFound:
-        pass
-    except discord.ext.commands.CheckFailure:
+    except discord.ext.commands.errors.CheckFailure:
         logger.warning(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}". '
                        f'which failed command checks.')
+    except discord.ext.commands.CommandNotFound:
+        pass
 
 
 @bot.command()
@@ -504,8 +554,8 @@ async def colour_me(ctx, colour_hex: str):
             colour_dec = int(colour, 16)
         except ValueError:
             return
-        if not (0 < colour_dec < 255):
-            await ctx.message(f"The colour: {colour_hex} sits outside of permitted ranges.",
+        if not (0 < colour_dec <= 255):
+            await ctx.message(f"The colour: {colour_hex[0:6]} sits outside of permitted ranges.",
                               delete_after=delete_messages_after)
             return
         colour_dec_split.append(colour_dec)
@@ -577,6 +627,7 @@ async def colour_me(ctx, colour_hex: str):
                                                                                  b=colour_dec_split[2]))
 
     await new_colour_role.edit(position=sorted_admin_list_pos[0])
+    await new_colour_role.edit(position=sorted_admin_list_pos[0])
 
     for invoker_role in ctx.author.roles:
         if "CPS[0x" in invoker_role.name:
@@ -584,12 +635,7 @@ async def colour_me(ctx, colour_hex: str):
 
     await ctx.author.add_roles(new_colour_role, reason="Automatic custom colour allocation by request.")
 
-    await asyncio.sleep(0.5)
-    for role in ctx.guild.roles:
-        if "CPS[0x" in role.name:
-            if not role.members:
-                await role.delete(reason="Automatic custom colour deletion when unused.")
-
+    await clean_colour_roles(ctx.guild)
 
 
 # Begin logging
