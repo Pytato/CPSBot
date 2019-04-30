@@ -61,7 +61,7 @@ delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
 role_channel_id = config["Misc"]["role_channel_id"]
 
-cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
+cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 colour_request_list = colour_roles.split(",")
@@ -102,7 +102,7 @@ async def auth_with_the_gargle():
 
     try:
         owner_id = int(owner_id)
-        owner_object = await bot.get_user_info(owner_id)
+        owner_object = await bot.fetch_user(owner_id)
     except TypeError:
         logger.error("owner_id in config.ini contains non-int type characters.")
         owner_object = None
@@ -554,7 +554,7 @@ async def colour_me(ctx, colour_hex: str):
             colour_dec = int(colour, 16)
         except ValueError:
             return
-        if not (0 < colour_dec <= 255):
+        if not (0 <= colour_dec <= 255):
             await ctx.message(f"The colour: {colour_hex[0:6]} sits outside of permitted ranges.",
                               delete_after=delete_messages_after)
             return
@@ -590,6 +590,8 @@ async def colour_me(ctx, colour_hex: str):
             if not (dim_min_max[0] < colour_dec_split[i] < dim_min_max[1]):
                 in_cube = False
                 break
+        if colour_dec == cube_center:
+            in_cube = True
         if in_cube:
             await ctx.send(f"The colour you have selected is too close to that of an admin role or "
                            f"protected colour.",
