@@ -152,7 +152,7 @@ async def clean_colour_roles(context_guild):
         if "CPS[0x" in role.name:
             if not role.members:
                 await role.delete(reason="Automatic custom colour deletion when unused.")
-    logger.info("Cleaned out empty colour roles")
+    logger.debug("Cleaned out empty colour roles")
 
 
 async def check_colour_users(guild_obj_list):
@@ -180,8 +180,9 @@ async def check_colour_users(guild_obj_list):
                                           f"custom colour, you need one of the following roles:\n"+parsed_req_list)
                     await member_obj.remove_roles(role,
                                                   reason="Automatic colour role removal due to expiry by CPSBot.")
+                    logger.info(f"Removed {member_obj.name}'s custom colour role in {this_guild.name}.")
 
-    logger.info(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
+    logger.debug(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
 
     await clean_colour_roles(this_guild)
 
