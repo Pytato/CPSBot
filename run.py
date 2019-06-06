@@ -267,7 +267,7 @@ async def on_message(msg):
     if not message_protected and not author_is_admin:
         if "@soton.ac.uk" in msg.content:
             await msg.channel.send(f"{msg.author.mention}, Please do not send messages in public channels that contain "
-                                   f"your email. If you are attempting to verify with SVGEBot, use direct messages and "
+                                   f"your email. If you are attempting to verify with SVGEVerify, use direct messages and "
                                    f"send:\n\n`!email your_email@soton.ac.uk` then follow instructions sent to your "
                                    f"university inbox. \n\nIf you believe your message was deleted in error, contact "
                                    f"<@{str(owner_id)}> with the datetime of your message.",
