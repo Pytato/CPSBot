@@ -59,9 +59,9 @@ exclusion_colours = config["Misc"]["exclusion_colours"]
 exclusion_range = config["Misc"]["exclusion_side_length"]
 delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
-role_channel_id = config["Misc"]["role_channel_id"]
+# role_channel_id = config["Misc"]["role_channel_id"]
 
-cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
+cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 colour_request_list = colour_roles.split(",")
@@ -102,7 +102,7 @@ async def auth_with_the_gargle():
 
     try:
         owner_id = int(owner_id)
-        owner_object = await bot.get_user_info(owner_id)
+        owner_object = await bot.get_user(owner_id)
     except TypeError:
         logger.error("owner_id in config.ini contains non-int type characters.")
         owner_object = None
@@ -152,38 +152,41 @@ async def clean_colour_roles(context_guild):
         if "CPS[0x" in role.name:
             if not role.members:
                 await role.delete(reason="Automatic custom colour deletion when unused.")
-    logger.info("Cleaned out empty colour roles")
+    logger.debug("Cleaned out empty colour roles")
 
 
 async def check_colour_users(guild_obj_list):
-    if len(guild_obj_list) > 1:
-        this_guild = guild_obj_list.pop(0)
-        await check_colour_users(guild_obj_list)
-    else:
-        this_guild = guild_obj_list[0]
-    parsed_req_list = ""
-    for req_role in colour_request_list:
-        parsed_req_list += f" - {req_role}\n"
-    for role in this_guild.roles:
-        if "CPS[0x" in role.name:
-            for member_obj in role.members:
-                valid_user = False
-                for mem_role in member_obj.roles:
-                    if mem_role.name in colour_request_list:
-                        valid_user = True
+    while True:
+        if len(guild_obj_list) > 1:
+            this_guild = guild_obj_list.pop(0)
+            await check_colour_users(guild_obj_list)
+        else:
+            this_guild = guild_obj_list[0]
+        parsed_req_list = ""
+        for req_role in colour_request_list:
+            parsed_req_list += f" - {req_role}\n"
+        for role in this_guild.roles:
+            if "CPS[0x" in role.name:
+                for member_obj in role.members:
+                    valid_user = False
+                    for mem_role in member_obj.roles:
+                        if mem_role.name in colour_request_list:
+                            valid_user = True
+                            break
+                    if valid_user:
                         break
-                if valid_user:
-                    break
-                else:
-                    await member_obj.send(f"Your custom colour role `{role.name}` on {this_guild.name} has been "
-                                          f"removed due to you lacking the permissions to retain it. To get a "
-                                          f"custom colour, you need one of the following roles:\n"+parsed_req_list)
-                    await member_obj.remove_roles(role,
-                                                  reason="Automatic colour role removal due to expiry by CPSBot.")
+                    else:
+                        await member_obj.send(f"Your custom colour role `{role.name}` on {this_guild.name} has been "
+                                              f"removed due to you lacking the permissions to retain it. To get a "
+                                              f"custom colour, you need one of the following roles:\n"+parsed_req_list)
+                        await member_obj.remove_roles(role,
+                                                      reason="Automatic colour role removal due to expiry by CPSBot.")
+                        logger.info(f"Removed {member_obj.name}'s custom colour role in {this_guild.name}.")
 
-    logger.info(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
+        logger.debug(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
 
-    await clean_colour_roles(this_guild)
+        await clean_colour_roles(this_guild)
+        await asyncio.sleep(30)
 
 
 async def search_for_file_drive(file_data, query, make_if_missing=False):
@@ -229,17 +232,22 @@ async def on_ready():
     if use_drive_for_backup:
         await auth_with_the_gargle()
 
+    try:
+        # noinspection PyUnresolvedReferences,PyUnboundLocalVariable
+        colour_cleaner.cancel()
+    except NameError:
+        pass
+
     logger.info(f"CPSBot is ready, took {timer() - bot_beginning_time:.3f}s.")
 
     logger.info("Checking for invalid colour roles.")
 
-    await check_colour_users(bot.guilds)
+    # noinspection PyUnusedLocal
+    colour_cleaner = asyncio.create_task(check_colour_users(bot.guilds))
 
 
 @bot.event
 async def on_message(msg):
-    global check_in_progress
-
     if msg.author.bot:
         return
 
@@ -252,11 +260,6 @@ async def on_message(msg):
             message_protected = True
             break
 
-    if not check_in_progress:
-        check_in_progress = True
-        await check_colour_users(bot.guilds)
-        check_in_progress = False
-
     author_obj = msg.author
     author_is_admin = False
     for admin_role in author_obj.roles:
@@ -265,11 +268,11 @@ async def on_message(msg):
 
     if not message_protected and not author_is_admin:
         if "@soton.ac.uk" in msg.content:
-            await msg.channel.send(f"{msg.author.mention}, Please do not send messages in public channels that contain "
-                                   f"your email. If you are attempting to verify with SVGEBot, use direct messages and "
-                                   f"send:\n\n`!email your_email@soton.ac.uk` then follow instructions sent to your "
-                                   f"university inbox. \n\nIf you believe your message was deleted in error, contact "
-                                   f"<@{str(owner_id)}> with the datetime of your message.",
+            await msg.channel.send(f"{msg.author.mention}, Please do not send messages in public channels that "
+                                   f"contain your email. If you are attempting to verify with SVGEVerify, use direct "
+                                   f"messages and send:\n\n`!email your_email@soton.ac.uk` then follow instructions "
+                                   f"sent to your university inbox. \n\nIf you believe your message was deleted in "
+                                   f"error, contact <@{str(owner_id)}> with the datetime of your message.",
                                    delete_after=delete_messages_after)
             await msg.author.send("Below is the message this bot has just deleted:\n\n" + msg.content)
             await msg.delete()
@@ -522,6 +525,7 @@ async def get_role_id(ctx, *, role: str):
 '''
 
 
+# noinspection PyUnboundLocalVariable
 @bot.command(name="colourme")
 @commands.has_any_role(*colour_request_list)
 async def colour_me(ctx, colour_hex: str):
@@ -554,7 +558,7 @@ async def colour_me(ctx, colour_hex: str):
             colour_dec = int(colour, 16)
         except ValueError:
             return
-        if not (0 < colour_dec <= 255):
+        if not (0 <= colour_dec <= 255):
             await ctx.message(f"The colour: {colour_hex[0:6]} sits outside of permitted ranges.",
                               delete_after=delete_messages_after)
             return
@@ -590,6 +594,8 @@ async def colour_me(ctx, colour_hex: str):
             if not (dim_min_max[0] < colour_dec_split[i] < dim_min_max[1]):
                 in_cube = False
                 break
+        if colour_dec == cube_center:
+            in_cube = True
         if in_cube:
             await ctx.send(f"The colour you have selected is too close to that of an admin role or "
                            f"protected colour.",
