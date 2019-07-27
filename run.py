@@ -61,7 +61,7 @@ delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
 # role_channel_id = config["Misc"]["role_channel_id"]
 
-cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
+cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 colour_request_list = colour_roles.split(",")
