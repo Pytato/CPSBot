@@ -280,7 +280,7 @@ async def on_message(msg):
             return
 
     if listen_channels_list:
-        if msg.channel.id not in listen_channels_list:
+        if msg.channel.id not in listen_channels_list and listen_channels_list == []:
             return
 
     if not msg.content.startswith(cmd_prefix):
@@ -633,7 +633,7 @@ async def colour_me(ctx, colour_hex: str):
                                                                                  b=colour_dec_split[2]))
 
     await new_colour_role.edit(position=sorted_admin_list_pos[0])
-    await new_colour_role.edit(position=sorted_admin_list_pos[0])
+    await new_colour_role.edit(position=sorted_admin_list_pos[0]-1)
 
     for invoker_role in ctx.author.roles:
         if "CPS[0x" in invoker_role.name:
