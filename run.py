@@ -280,7 +280,7 @@ async def on_message(msg):
             return
 
     if listen_channels_list:
-        if msg.channel.id not in listen_channels_list and listen_channels_list == []:
+        if msg.channel.id not in listen_channels_list:
             return
 
     if not msg.content.startswith(cmd_prefix):
