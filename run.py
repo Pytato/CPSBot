@@ -61,7 +61,7 @@ delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
 # role_channel_id = config["Misc"]["role_channel_id"]
 
-cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING A FUCK SO THAT'S WHY IT'S HERE
+cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING SILLY SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 colour_request_list = colour_roles.split(",")
@@ -93,8 +93,24 @@ else:
 
 bot = commands.Bot(command_prefix=cmd_prefix, pm_help=True)
 
+running_timecheck = False
+
 watching = discord.Activity(type=discord.ActivityType.watching, name="you")
 check_in_progress = False
+
+
+async def _time_check():
+    """Background deadline/task checking loop that is meant to sit on the main event loop"""
+    global running_timecheck
+
+    running_timecheck = True
+
+    while True:
+        try:
+            await check_colour_users(bot.guilds)
+        except Exception as e:
+            logger.exception(e)
+        await asyncio.sleep(60)
 
 
 async def auth_with_the_gargle():
@@ -242,8 +258,8 @@ async def on_ready():
 
     logger.info("Checking for invalid colour roles.")
 
-    # noinspection PyUnusedLocal
-    colour_cleaner = asyncio.create_task(check_colour_users(bot.guilds))
+    if not running_timecheck:
+        await _time_check()
 
 
 @bot.event
@@ -470,59 +486,6 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
     await target_user.send(content=warning_message)
 
     logger.debug(f"Finished running warn command in {timer() - warn_command_start}s.")
-
-
-@bot.command()
-@commands.has_any_role(*admin_role_list)
-async def get_emote_id(ctx, emote):
-    """Returns the ID for a given emote, by name or the emote sent in a message.
-
-    Args:
-        - emote: either emote name or object sent in message, if *, command returns a list of all emotes in DMs,
-        if *ani, returns a list of all animated emotes.
-    """
-
-    if emote != "*" and emote != "*ani":
-        try:
-            emoji_object = await commands.EmojiConverter().convert(ctx, emote)
-        except commands.CommandError:
-            logger.error("Failed to convert target emoji to object.")
-            return
-        await ctx.send(f"Found emoji `:{emoji_object.name}:` with ID: `{emoji_object.id}`.",
-                       delete_after=delete_messages_after)
-        return
-
-    emote_list_str = '```{'
-    for emoji in ctx.guild.emojis:
-        if emoji.guild_id == ctx.guild.id:
-            if emoji.animated and emote == "*ani":
-                emote_list_str += f"{emoji.name} : {emoji.id},"
-            elif (not emoji.animated) and emote == "*":
-                emote_list_str += f"{emoji.name} : {emoji.id},"
-
-    emote_list_str = emote_list_str.pop[-1] + "}```"
-    await ctx.author.send(f"List of {emote} emotes: \n\n{emote_list_str}", delete_after=delete_messages_after)
-
-
-'''
-@bot.command()
-@commands.has_any_role(tuple(admin_role_list))
-async def get_role_id(ctx, *, role: str):
-    """Returns the Role ID for a given role.
-
-    Args:
-        - role: role name existing in the server of invocation.
-    """
-
-    try:
-        role_obj = await commands.RoleConverter().convert(ctx, role)
-    except commands.CommandError:
-        logger.error("Failed to convert target role to object.")
-        await ctx.send("Failed to convert role to ID.", delete_after=delete_messages_after)
-        return
-
-    await ctx.author.send(f"{role_obj.name} | {str(role_obj.id)}", delete_after=delete_messages_after)
-'''
 
 
 # noinspection PyUnboundLocalVariable
