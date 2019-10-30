@@ -117,8 +117,7 @@ async def auth_with_the_gargle():
     global owner_id
 
     try:
-        owner_id = int(owner_id)
-        owner_object = await bot.get_user(owner_id)
+        owner_object = bot.get_user(owner_id)
     except TypeError:
         logger.error("owner_id in config.ini contains non-int type characters.")
         owner_object = None
@@ -127,7 +126,7 @@ async def auth_with_the_gargle():
         owner_object = None
 
     if owner_object is None:
-        logger.error("No owner ID defined")
+        logger.error("No owner object defined")
 
     await asyncio.sleep(0.4)
 
@@ -256,7 +255,7 @@ async def on_ready():
 
     logger.info(f"CPSBot is ready, took {timer() - bot_beginning_time:.3f}s.")
 
-    logger.info("Checking for invalid colour roles.")
+    logger.info("Starting automatic colour role cleaning")
 
     if not running_timecheck:
         await _time_check()
@@ -304,13 +303,17 @@ async def on_message(msg):
 
     logger.info(f'Command sent by "{msg.author.name}#{msg.author.discriminator}": "{msg.content}."')
 
+    msg_preserved = msg
     try:
-        msg_preserved = msg
         await msg.delete()
         await bot.process_commands(msg_preserved)
+    except discord.ext.commands.errors.MissingAnyRole:
+        await msg.author.send(f"You do not have the required roles to run {msg_preserved.content}")
+        logger.warning(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}". '
+                       f'which failed command checks. UserID: {str(msg.author.id)}')
     except discord.ext.commands.errors.CheckFailure:
         logger.warning(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}". '
-                       f'which failed command checks.')
+                       f'which failed command checks. UserID: {str(msg.author.id)}')
     except discord.ext.commands.CommandNotFound:
         pass
 
@@ -498,6 +501,19 @@ async def colour_me(ctx, colour_hex: str):
     operation.
     """
 
+    async def generate_blocked_colour_list() -> list:
+        blocked_colour_list = []
+        for blocked_colour in exclusion_cube_origins:
+            blocked_colour_hex_l = ""
+            for colour_dimension in blocked_colour:
+                if colour_dimension != 0:
+                    blocked_colour_hex_l += hex(colour_dimension).lstrip("0x").upper()
+                else:
+                    blocked_colour_hex_l += "00"
+            blocked_colour_hex_l = "0x" + blocked_colour_hex_l
+            blocked_colour_list.append(blocked_colour_hex_l)
+        return blocked_colour_list
+
     # Preprocess the colour
     if colour_hex.lower() == "remove":
         for role in ctx.author.roles:
@@ -560,9 +576,17 @@ async def colour_me(ctx, colour_hex: str):
         if colour_dec == cube_center:
             in_cube = True
         if in_cube:
-            await ctx.send(f"The colour you have selected is too close to that of an admin role or "
-                           f"protected colour.",
-                           delete_after=delete_messages_after)
+            blocked_colour_hex = "0x"
+            for dimension in cube_center:
+                blocked_colour_hex += hex(dimension).lstrip("0x")
+                if dimension == 0:
+                    blocked_colour_hex += "00"
+            blocked_colour_return_message = f"The colour you have selected is too close to: {blocked_colour_hex}. "\
+                                            f"See below for list of exclusion colours:```"
+            for block_colour in await generate_blocked_colour_list():
+                blocked_colour_return_message += f"\n - {block_colour}"
+            blocked_colour_return_message += "```"
+            await ctx.send(blocked_colour_return_message, delete_after=delete_messages_after)
             return
 
     # Not much left to do, only need to create the custom colour role and make sure that it
