@@ -499,6 +499,8 @@ async def colour_me(ctx, colour_hex: str):
 
     If colour_hex is given as remove, the bot will remove the colour role and exit the
     operation.
+
+    colour_hex must be a string type six digit hex.
     """
 
     async def generate_blocked_colour_list() -> list:
