@@ -307,15 +307,11 @@ async def on_message(msg):
     try:
         await msg.delete()
         await bot.process_commands(msg_preserved)
-    except discord.ext.commands.errors.MissingAnyRole:
-        await msg.author.send(f"You do not have the required roles to run {msg_preserved.content}")
-        logger.warning(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}". '
-                       f'which failed command checks. UserID: {str(msg.author.id)}')
-    except discord.ext.commands.errors.CheckFailure:
-        logger.warning(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}". '
-                       f'which failed command checks. UserID: {str(msg.author.id)}')
     except discord.ext.commands.CommandNotFound:
         pass
+    except Exception as e:
+        logger.exception(f'User: "{msg.author.name}#{msg.author.discriminator}" issued command "{msg.content}", '
+                         f'which experienced an exception:\n\n{e}')
 
 
 @bot.command()
