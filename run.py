@@ -108,6 +108,7 @@ async def _time_check():
     while True:
         try:
             await check_colour_users(bot.guilds)
+            await clean_colour_roles(bot.guilds)
         except Exception as e:
             logger.exception(e)
         await asyncio.sleep(60)
@@ -161,22 +162,18 @@ async def auth_with_the_gargle():
     gauth.SaveCredentialsFile("./configs/credentials.json")
 
 
-async def clean_colour_roles(context_guild):
+async def clean_colour_roles(guild_list):
     await asyncio.sleep(0.5)
-    for role in context_guild.roles:
-        if "CPS[0x" in role.name:
-            if not role.members:
-                await role.delete(reason="Automatic custom colour deletion when unused.")
-    logger.debug("Cleaned out empty colour roles")
+    for guild in guild_list:
+        for role in guild.roles:
+            if "CPS[0x" in role.name:
+                if not role.members:
+                    await role.delete(reason="Automatic custom colour deletion when unused.")
+        logger.debug("Cleaned out empty colour roles")
 
 
 async def check_colour_users(guild_obj_list):
-    while True:
-        if len(guild_obj_list) > 1:
-            this_guild = guild_obj_list.pop(0)
-            await check_colour_users(guild_obj_list)
-        else:
-            this_guild = guild_obj_list[0]
+    for this_guild in guild_obj_list:
         parsed_req_list = ""
         for req_role in colour_request_list:
             parsed_req_list += f" - {req_role}\n"
@@ -193,15 +190,12 @@ async def check_colour_users(guild_obj_list):
                     else:
                         await member_obj.send(f"Your custom colour role `{role.name}` on {this_guild.name} has been "
                                               f"removed due to you lacking the permissions to retain it. To get a "
-                                              f"custom colour, you need one of the following roles:\n"+parsed_req_list)
+                                              f"custom colour, you need one of the following roles:\n" + parsed_req_list)
                         await member_obj.remove_roles(role,
                                                       reason="Automatic colour role removal due to expiry by CPSBot.")
                         logger.info(f"Removed {member_obj.name}'s custom colour role in {this_guild.name}.")
 
         logger.debug(f"Finished clearing roles for unauthorised users in {this_guild.name}.")
-
-        await clean_colour_roles(this_guild)
-        await asyncio.sleep(30)
 
 
 async def search_for_file_drive(file_data, query, make_if_missing=False):
@@ -629,7 +623,7 @@ async def colour_me(ctx, colour_hex: str):
 
     await ctx.author.add_roles(new_colour_role, reason="Automatic custom colour allocation by request.")
 
-    await clean_colour_roles(ctx.guild)
+    clean_colour_roles(ctx.guild)
 
 
 # Begin logging
