@@ -61,7 +61,7 @@ delete_messages_after = config["Misc"]["delete_messages_after"]
 listen_channels = config["Misc"]["listen_channels"]
 # role_channel_id = config["Misc"]["role_channel_id"]
 
-cmd_prefix = "CPS."  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING SILLY SO THAT'S WHY IT'S HERE
+cmd_prefix = "££"  # COMMAND PREFIX IS HERE FOR EDITING PURPOSES, UNICODE WAS BEING SILLY SO THAT'S WHY IT'S HERE
 
 admin_role_list = admin_role_names.split(",")
 colour_request_list = colour_roles.split(",")
@@ -489,6 +489,7 @@ async def warn(ctx, target_user_mention, search_depth: int, delete_found_message
 
 # noinspection PyUnboundLocalVariable
 @bot.command(name="colourme")
+@commands.cooldown(1, 30, commands.BucketType.user)
 @commands.has_any_role(*colour_request_list)
 async def colour_me(ctx, colour_hex: str):
     """Gives the command invoker a custom colour role if they satisfy given conditions.
@@ -517,12 +518,14 @@ async def colour_me(ctx, colour_hex: str):
         for role in ctx.author.roles:
             if "CPS[0x" in role.name:
                 await ctx.author.remove_roles(role, reason="User requested colour role removal.")
+                logger.debug(f"Removed colour role from {ctx.author.name}#{ctx.author.discriminator}")
 
         await asyncio.sleep(0.5)
         for role in ctx.guild.roles:
             if "CPS[0x" in role.name:
                 if not role.members:
                     await role.delete(reason="Automatic custom colour deletion when unused.")
+                    logger.debug(f"Deleted colour role: {role.name}, ID: {role.id}.")
         return
 
     if len(colour_hex) > 6:
@@ -583,7 +586,7 @@ async def colour_me(ctx, colour_hex: str):
                                             f"See below for list of exclusion colours:```"
             for block_colour in await generate_blocked_colour_list():
                 blocked_colour_return_message += f"\n - {block_colour}"
-            blocked_colour_return_message += "```"
+            blocked_colour_return_message += f"```\n\nThe current exclusion length is {exclusion_range}."
             await ctx.send(blocked_colour_return_message, delete_after=delete_messages_after)
             return
 
