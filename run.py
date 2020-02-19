@@ -279,9 +279,9 @@ async def on_message(msg):
         if "@soton.ac.uk" in msg.content:
             await msg.channel.send(f"{msg.author.mention}, Please do not send messages in public channels that "
                                    f"contain your email. If you are attempting to verify with SVGEVerify, use direct "
-                                   f"messages and send:\n\n`!email your_email@soton.ac.uk` then follow instructions "
-                                   f"sent to your university inbox. \n\nIf you believe your message was deleted in "
-                                   f"error, contact <@{str(owner_id)}> with the datetime of your message.",
+                                   f"messages and send:\n\n`svge!email your_email@soton.ac.uk` then follow "
+                                   f"instructions sent to your university inbox. \n\nIf you believe your message was "
+                                   f"deleted in error, contact <@{str(owner_id)}> with the datetime of your message.",
                                    delete_after=delete_messages_after)
             await msg.author.send("Below is the message this bot has just deleted:\n\n" + msg.content)
             await msg.delete()
